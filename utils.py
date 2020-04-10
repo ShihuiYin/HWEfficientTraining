@@ -103,6 +103,13 @@ def set_BN_bias(model, init_bias):
         if isinstance(m, nn.BatchNorm2d):
             m.bias.data = init_bias * torch.ones_like(m.bias.data)
 
+def freeze_BN_layers(model):
+    for m in model.modules():
+        if isinstance(m, nn.BatchNorm2d):
+            m.weight.requires_grad = False
+            m.bias.requires_grad = False
+            m.track_running_stats = False
+
 def get_weight_sparsity(model):
     total = 0.
     nonzeros = 0.

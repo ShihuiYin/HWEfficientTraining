@@ -69,6 +69,8 @@ parser.add_argument('--init_BN_bias', type=float, default=0,
                     help='initial bias for batch norm')
 parser.add_argument('--gradient_gamma', type=float, default=0.0,
                     help='prunning ratio for gradient during backward')
+parser.add_argument('--freeze_BN_after', type=int, default=10000, # not helpful
+                    help='epoch number after which BN parameters freeze')
 
 
 for num in num_types:
@@ -239,6 +241,10 @@ for epoch in range(args.epochs):
     if args.TD_gamma_final > 0 or args.TD_alpha_final > 0:
         values += [TD_gamma, TD_alpha]
     utils.print_table(values, columns, epoch, logger)
+    if epoch == args.freeze_BN_after:
+        utils.freeze_BN_layers(model)
+        Hooks_grad = utils.add_grad_record_Hook(model)
+
 
 if args.save_file is not None:
     torch.save({
