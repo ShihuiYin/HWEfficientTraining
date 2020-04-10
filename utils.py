@@ -139,12 +139,14 @@ def get_activation_group_sparsity(Hooks, block_size=4):
     nonzeros = 0.
     for k in Hooks.keys():
         input = Hooks[k].input[0]
-        input_groups = nn.functional.avg_pool2d(input, 
-                kernel_size=(block_size, block_size),
-                stride=(1, 1))
-        input_mask = (input_groups != 0).float()
-        nonzeros += input_mask.sum()
-        total += input_mask.numel()
+        if len(input.shape) == 4: # ignore fully connected layers for now
+            input_padded = nn.functional.pad(input, (1,1,1,1))
+            input_groups = nn.functional.avg_pool2d(input_padded, 
+                    kernel_size=(block_size, block_size),
+                    stride=(1, 1))
+            input_mask = (input_groups != 0).float()
+            nonzeros += input_mask.sum()
+            total += input_mask.numel()
     input_sparsity = (total - nonzeros) / total
     return input_sparsity
 

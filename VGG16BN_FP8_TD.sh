@@ -1,11 +1,11 @@
 #!/bin/bash
-block_size=${1:-16}
+block_size=${1:-4}
 gamma=${2:-0.0}
 alpha=${3:-0.0}
-gamma_final=${4:--1.0}
-alpha_final=${5:--1.0}
-ramping_power=${6:--5.0}
-lambda_BN=${7:-1e-4}
+gamma_final=${4:-0.75}
+alpha_final=${5:-0.99}
+ramping_power=${6:-5.0}
+lambda_BN=${7:-0}
 init_BN_bias=${8:-0}
 gradient_gamma=${9:-0}
 log_name="./logs/VGG16BN_FP8_TD_${block_size}_${gamma}_${alpha}_${gamma_final}_${alpha_final}_${ramping_power}_${lambda_BN}_${init_BN_bias}_${gradient_gamma}.log" 

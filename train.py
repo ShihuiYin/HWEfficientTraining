@@ -93,6 +93,8 @@ streamHandler.setLevel(0)
 logger.addHandler(streamHandler)
 logger.root.setLevel(0)
 
+logger.info(args)
+
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.deterministic = True
