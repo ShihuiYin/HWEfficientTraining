@@ -130,6 +130,25 @@ def get_activation_sparsity(Hooks):
     input_sparsity = (total - nonzeros) / total
     return input_sparsity
 
+def get_activation_group_sparsity(Hooks, block_size=4):
+    '''
+    get activation sparsity in overlapping groups of 4x4
+    ignoring zero padding cases
+    '''
+    total = 0.
+    nonzeros = 0.
+    for k in Hooks.keys():
+        input = Hooks[k].input[0]
+        input_groups = nn.functional.avg_pool2d(input, 
+                kernel_size=(block_size, block_size),
+                stride=(1, 1))
+        input_mask = (input_groups != 0).float()
+        nonzeros += input_mask.sum()
+        total += input_mask.numel()
+    input_sparsity = (total - nonzeros) / total
+    return input_sparsity
+
+
 def adjust_learning_rate(optimizer, lr):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
