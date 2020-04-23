@@ -10,10 +10,10 @@ from qtorch import FloatingPoint
 from qtorch.quant import Quantizer
 from .td import Conv2d_TD, Linear_TD
 
-__all__ = ['VGG16LP_TD', 'VGG16BNLP_TD', 'VGG19LP_TD', 'VGG19BNLP_TD']
+__all__ = ['VGG16LP_TD', 'VGG16BNLP_TD', 'VGG16GNLP_TD', 'VGG19LP_TD', 'VGG19BNLP_TD', 'VGG19GNLP_TD']
 
 
-def make_layers(cfg, quant, batch_norm=False, gamma=0.5, alpha=0.5, block_size=16):
+def make_layers(cfg, quant, batch_norm=False, group_norm=False, gamma=0.5, alpha=0.5, block_size=16):
     layers = list()
     in_channels = 3
     n = 1
@@ -30,6 +30,8 @@ def make_layers(cfg, quant, batch_norm=False, gamma=0.5, alpha=0.5, block_size=1
                                     alpha=alpha, block_size=block_size)
             if batch_norm:
                 layers += [conv2d, nn.BatchNorm2d(filters), nn.ReLU(inplace=True)]
+            elif group_norm:
+                layers += [conv2d, nn.GroupNorm(int(filters/16), filters), nn.ReLU(inplace=True)]
             else:
                 layers += [conv2d, nn.ReLU(inplace=True)]
             if use_quant: layers += [quant()]
@@ -45,10 +47,10 @@ cfg = {
 }
 
 class VGG(nn.Module):
-    def __init__(self, quant=None, num_classes=10, depth=16, batch_norm=False, gamma=0.5, alpha=0.5, block_size=16):
+    def __init__(self, quant=None, num_classes=10, depth=16, batch_norm=False, group_norm=False, gamma=0.5, alpha=0.5, block_size=16):
 
         super(VGG, self).__init__()
-        self.features = make_layers(cfg[depth], quant, batch_norm, gamma, alpha, block_size)
+        self.features = make_layers(cfg[depth], quant, batch_norm, group_norm, gamma, alpha, block_size)
         IBM_half = FloatingPoint(exp=6, man=9)
         quant_half = lambda : Quantizer(IBM_half, IBM_half, "nearest", "nearest")
         self.classifier = nn.Sequential(
@@ -101,6 +103,8 @@ class VGG16LP_TD(Base):
 class VGG16BNLP_TD(Base):
     kwargs = {'batch_norm': True}
 
+class VGG16GNLP_TD(Base):
+    kwargs = {'group_norm': True}
 
 class VGG19LP_TD(Base):
     kwargs = {'depth': 19}
@@ -108,3 +112,6 @@ class VGG19LP_TD(Base):
 
 class VGG19BNLP_TD(Base):
     kwargs = {'depth': 19, 'batch_norm': True}
+
+class VGG19GNLP_TD(Base):
+    kwargs = {'depth': 19, 'group_norm': True}
