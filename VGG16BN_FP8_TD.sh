@@ -1,15 +1,16 @@
 #!/bin/bash
 block_size=${1:-4}
-gamma=${2:-0.0}
-alpha=${3:-0.0}
-gamma_final=${4:-0.75}
-alpha_final=${5:-0.99}
-ramping_power=${6:-5.0}
-lambda_BN=${7:-0}
-init_BN_bias=${8:-0}
-gradient_gamma=${9:-0}
-log_name="./logs/VGG16BN_FP8_TD_${block_size}_${gamma}_${alpha}_${gamma_final}_${alpha_final}_${ramping_power}_${lambda_BN}_${init_BN_bias}_${gradient_gamma}.log" 
-save_file_name="VGG16BN_FP8_TD_${block_size}_${gamma}_${alpha}_${gamma_final}_${alpha_final}_${ramping_power}_${lambda_BN}_${init_BN_bias}_${gradient_gamma}.pth" 
+gamma_final=${2:-0.75}
+per_layer=${3:-0}
+lambda_BN=${4:-0}
+init_BN_bias=${5:-0}
+alpha_final=1.0
+gamma=0.0
+alpha=0.0
+ramping_power=5.0
+gradient_gamma=0
+log_name="./logs/VGG16BN_FP8_TD_${block_size}_${gamma}_${alpha}_${gamma_final}_${alpha_final}_${ramping_power}_${lambda_BN}_${init_BN_bias}_perlayer_${per_layer}.log" 
+save_file_name="VGG16BN_FP8_TD_${block_size}_${gamma}_${alpha}_${gamma_final}_${alpha_final}_${ramping_power}_${lambda_BN}_${init_BN_bias}_perlayer_${per_layer}.pth" 
 
 kernprof -l train.py --dataset CIFAR10 \
                 --data_path ./data \
@@ -25,6 +26,7 @@ kernprof -l train.py --dataset CIFAR10 \
                 --lambda_BN $lambda_BN \
                 --init_BN_bias $init_BN_bias \
                 --gradient_gamma $gradient_gamma \
+                --per_layer $per_layer \
                 --epochs=200 \
                 --lr_init=0.05 \
                 --wd=5e-4 \

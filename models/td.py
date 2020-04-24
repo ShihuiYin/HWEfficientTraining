@@ -11,7 +11,7 @@ class Conv2d_TD(nn.Conv2d):
         self.gamma = gamma
         self.alpha = alpha
         self.block_size = block_size
-        self.count = 0
+        self.count = -1 # disable in-module mask generation
     
     def forward(self, input):
         # sort blocks by mean absolute value
@@ -29,8 +29,7 @@ class Conv2d_TD(nn.Conv2d):
                     mask_keep = 1.0 - mask_small * mask_dropout
                     self.mask_keep_original = F.interpolate(mask_keep, 
                                         scale_factor=(self.block_size, self.block_size)).permute(2,3,0,1)
-                    #scale_factor = self.weight.abs().mean() / (self.weight * self.mask_keep_original).abs().mean()
-            self.count += 1
+            # self.count += 1 # disable in-module mask_generation
             out = F.conv2d(input, self.weight * self.mask_keep_original, None, self.stride, self.padding,
                                         self.dilation, self.groups)
         else:
@@ -51,7 +50,7 @@ class Linear_TD(nn.Linear):
         self.gamma = gamma
         self.alpha = alpha
         self.block_size = block_size
-        self.count = 0
+        self.count = -1 # disable in-module mask generation
 
     def forward(self, input):
         if self.gamma > 0 and self.alpha > 0:
@@ -68,8 +67,7 @@ class Linear_TD(nn.Linear):
                     mask_keep = 1.0 - mask_small * mask_dropout
                     self.mask_keep_original = F.interpolate(mask_keep.unsqueeze(0), 
                                         scale_factor=(self.block_size, self.block_size)).squeeze()
-                    #scale_factor = self.weight.abs().mean() / (self.weight * self.mask_keep_original).abs().mean()
-            self.count += 1
+            # self.count += 1 # disable in-module mask generation
             return F.linear(input, self.weight * self.mask_keep_original, self.bias)
         else:
             return F.linear(input, self.weight, self.bias)

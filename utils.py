@@ -2,9 +2,11 @@ import os
 import torch
 import tabulate
 import torch.nn as nn
+import torch.nn.functional as F
 import pandas as pd
 import matplotlib
 import numpy as np
+from models.td import Conv2d_TD, Linear_TD
 matplotlib.use('svg')
 import matplotlib.pyplot as plt
 plt.rcParams.update({'font.size': 24})
@@ -164,6 +166,55 @@ def print_table(values, columns, epoch, logger):
     else:
         table = table.split('\n')[2]
     logger.info(table)
+
+def update_mask(model, gamma=0.0, alpha=0.0, block_size=4, per_layer=True):
+    with torch.no_grad():
+        # get the block representative values
+        block_values = {}
+        if not per_layer:
+            block_values_all = []
+        for m in model.modules():
+            if isinstance(m, Conv2d_TD):
+                block_values[m] = F.avg_pool2d(m.weight.data.abs().permute(2,3,0,1),
+                                kernel_size=(block_size, block_size),
+                                stride=(block_size, block_size))
+                if not per_layer:
+                    block_values_all.append(block_values[m].contiguous().view(-1))
+            elif isinstance(m, Linear_TD):
+                block_values[m] = F.avg_pool2d(m.weight.data.abs().unsqueeze(0),
+                                kernel_size=(block_size, block_size),
+                                stride=(block_size, block_size))
+                if not per_layer:
+                    block_values_all.append(block_values[m].contiguous().view(-1))
+
+        # get the threshold value(s)
+        threshold = {}
+        if not per_layer:
+            block_values_all_flattenned = torch.cat(block_values_all)
+            sorted_block_values, _ = torch.sort(block_values_all_flattenned)
+            thre_index = int(sorted_block_values.data.numel() * gamma)
+            threshold_all = sorted_block_values[thre_index]
+            for m in block_values.keys():
+                threshold[m] = threshold_all
+        else:
+            for m in block_values.keys():
+                sorted_block_values, _ = torch.sort(block_values[m].contiguous().view(-1))
+                thre_index = int(sorted_block_values.data.numel() * gamma)
+                threshold[m] = sorted_block_values[thre_index]
+
+        # apply stochastic dropping
+        for m in block_values.keys():
+            mask_small = 1 - block_values[m].gt(threshold[m].cuda()).float().cuda() # mask for blocks candidates for pruning
+            mask_dropout = torch.rand_like(block_values[m]).lt(alpha).float().cuda()
+            mask_keep = 1.0 - mask_small * mask_dropout
+            if isinstance(m, Conv2d_TD):
+                m.mask_keep_original = F.interpolate(mask_keep, 
+                                    scale_factor=(block_size, block_size)).permute(2,3,0,1)
+            elif isinstance(m, Linear_TD):
+                m.mask_keep_original = F.interpolate(mask_keep.unsqueeze(0), 
+                                    scale_factor=(block_size, block_size)).squeeze()
+
+
 
 
 #@profile
