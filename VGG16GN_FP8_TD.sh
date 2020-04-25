@@ -2,8 +2,9 @@
 block_size=${1:-4}
 gamma_final=${2:-0.75}
 per_layer=${3:-0}
-lambda_BN=${4:-0}
-init_BN_bias=${5:-0}
+lr_init=${4:-0.05}
+lambda_BN=${5:-0}
+init_BN_bias=${6:-0}
 alpha_final=1.0
 gamma=0.0
 alpha=0.0
@@ -27,7 +28,7 @@ kernprof -l train.py --dataset CIFAR10 \
                 --init_BN_bias $init_BN_bias \
                 --gradient_gamma $gradient_gamma \
                 --epochs=200 \
-                --lr_init=0.05 \
+                --lr_init=$lr_init \
                 --wd=5e-4 \
                 --weight-man 2 \
                 --grad-man 2 \

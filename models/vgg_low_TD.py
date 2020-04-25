@@ -31,7 +31,7 @@ def make_layers(cfg, quant, batch_norm=False, group_norm=False, gamma=0.5, alpha
             if batch_norm:
                 layers += [conv2d, nn.BatchNorm2d(filters), nn.ReLU(inplace=True)]
             elif group_norm:
-                layers += [conv2d, nn.GroupNorm(4, filters), nn.ReLU(inplace=True)]
+                layers += [conv2d, nn.GroupNorm(32, filters), nn.ReLU(inplace=True)]
             else:
                 layers += [conv2d, nn.ReLU(inplace=True)]
             if use_quant: layers += [quant()]
