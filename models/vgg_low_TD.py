@@ -13,7 +13,8 @@ from .td import Conv2d_TD, Linear_TD
 __all__ = ['VGG16LP_TD', 'VGG16BNLP_TD', 'VGG16GNLP_TD', 'VGG19LP_TD', 'VGG19BNLP_TD', 'VGG19GNLP_TD']
 
 
-def make_layers(cfg, quant, batch_norm=False, group_norm=False, gamma=0.5, alpha=0.5, block_size=16):
+def make_layers(cfg, quant, batch_norm=False, group_norm=False, gamma=0.5, alpha=0.5, block_size=16,
+        cg_threshold_init=-3.0, cg_alpha=2.0, cg_groups=1):
     layers = list()
     in_channels = 3
     n = 1
@@ -27,7 +28,8 @@ def make_layers(cfg, quant, batch_norm=False, group_norm=False, gamma=0.5, alpha
                 conv2d = nn.Conv2d(in_channels, filters, kernel_size=3, padding=1)
             else:
                 conv2d = Conv2d_TD(in_channels, filters, kernel_size=3, padding=1, gamma=gamma, 
-                                    alpha=alpha, block_size=block_size)
+                                    alpha=alpha, block_size=block_size,
+                                    cg_groups=cg_groups, cg_alpha=cg_alpha, cg_threshold_init=cg_threshold_init)
             if batch_norm:
                 layers += [conv2d, nn.BatchNorm2d(filters), nn.ReLU(inplace=True)]
             elif group_norm:
@@ -47,10 +49,11 @@ cfg = {
 }
 
 class VGG(nn.Module):
-    def __init__(self, quant=None, num_classes=10, depth=16, batch_norm=False, group_norm=False, gamma=0.5, alpha=0.5, block_size=16):
+    def __init__(self, quant=None, num_classes=10, depth=16, batch_norm=False, group_norm=False, gamma=0.5, alpha=0.5, block_size=16,
+            cg_groups=1, cg_alpha=2.0, cg_threshold_init=-3.0):
 
         super(VGG, self).__init__()
-        self.features = make_layers(cfg[depth], quant, batch_norm, group_norm, gamma, alpha, block_size)
+        self.features = make_layers(cfg[depth], quant, batch_norm, group_norm, gamma, alpha, block_size, cg_threshold_init, cg_alpha, cg_groups)
         IBM_half = FloatingPoint(exp=6, man=9)
         quant_half = lambda : Quantizer(IBM_half, IBM_half, "nearest", "nearest")
         self.classifier = nn.Sequential(

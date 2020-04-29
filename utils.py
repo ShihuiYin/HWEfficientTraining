@@ -100,6 +100,13 @@ def getBatchNormBiasRegularizer(model):
             Loss += torch.exp(m.bias).sum()
     return Loss
 
+def getChannelGatingRegularizer(model, target_cg_threshold):
+    Loss = 0
+    for name, param in model.named_parameters():
+        if 'cg_threshold' in name:
+            Loss += torch.sum((param-target_cg_threshold)**2)
+    return Loss
+
 def set_BN_bias(model, init_bias):
     for m in model.modules():
         if isinstance(m, nn.BatchNorm2d):
@@ -152,6 +159,23 @@ def get_activation_group_sparsity(Hooks, block_size=4):
     input_sparsity = (total - nonzeros) / total
     return input_sparsity
 
+def get_cg_sparsity(model):
+    total = 0.
+    nonzeros = 0.
+    for m in model.modules():
+        if hasattr(m, 'num_out'):
+            total += m.num_out
+            nonzeros += m.num_full
+    cg_sparsity = (total - nonzeros) / total
+    return cg_sparsity
+
+def get_avg_cg_threshold(model):
+    cg_threshold_list = []
+    for m in model.modules():
+        if hasattr(m, 'cg_threshold'):
+            cg_threshold_list.append(m.cg_threshold.data.view(-1))
+    cg_threshold_all = torch.cat(cg_threshold_list)
+    return cg_threshold_all.mean().cpu().numpy()
 
 def adjust_learning_rate(optimizer, lr):
     for param_group in optimizer.param_groups:
@@ -219,7 +243,7 @@ def update_mask(model, gamma=0.0, alpha=0.0, block_size=4, per_layer=True):
 
 #@profile
 def run_epoch(loader, model, criterion, optimizer=None,
-              phase="train", loss_scaling=1.0, lambda_BN=0.0):
+              phase="train", loss_scaling=1.0, lambda_BN=0.0, target_cg_threshold=0.0, lambda_CG=0.0):
     assert phase in ["train", "val", "test"], "invalid running phase"
     loss_sum = 0.0
     correct = 0.0
@@ -228,7 +252,7 @@ def run_epoch(loader, model, criterion, optimizer=None,
     elif phase=="val" or phase=="test": model.eval()
 
     ttl = 0
-    #Hooks = add_input_record_Hook(model)
+    Hooks = add_input_record_Hook(model)
     #Hooks_grad = add_grad_record_Hook(model)
     with torch.autograd.set_grad_enabled(phase=="train"):
         for i, (input, target) in enumerate(loader):
@@ -238,6 +262,9 @@ def run_epoch(loader, model, criterion, optimizer=None,
             loss = criterion(output, target)
             if lambda_BN > 0:
                 loss += lambda_BN * getBatchNormBiasRegularizer(model)
+
+            if lambda_CG > 0:
+                loss += lambda_CG * getChannelGatingRegularizer(model, target_cg_threshold)
 
             loss_sum += loss * input.size(0)
             pred = output.data.max(1, keepdim=True)[1]

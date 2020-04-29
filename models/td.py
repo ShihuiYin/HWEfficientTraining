@@ -4,37 +4,70 @@ import torch.nn.functional as F
 
 class Conv2d_TD(nn.Conv2d):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, 
-                 padding=0, dilation=1, groups=1, bias=True, gamma=0.0, alpha=0.0, block_size=16):
+                 padding=0, dilation=1, groups=1, bias=True, gamma=0.0, alpha=0.0, block_size=16,
+                 cg_groups=1, cg_threshold_init=-6.0, cg_alpha=2.0, cg_shuffle=True):
         super(Conv2d_TD, self).__init__(in_channels, out_channels, kernel_size,
                 stride=stride, padding=padding, dilation=dilation, groups=groups,
                 bias=bias)
         self.gamma = gamma
         self.alpha = alpha
         self.block_size = block_size
-        self.count = -1 # disable in-module mask generation
+        self.cg_groups = cg_groups
+        if self.cg_groups > 1:
+            self.cg_alpha=cg_alpha
+            self.cg_threshold = nn.Parameter(cg_threshold_init * torch.ones(1, out_channels, 1, 1))
+            self.cg_in_chunk_size = int(in_channels / self.cg_groups)
+            self.cg_bn = nn.BatchNorm2d(out_channels, affine=False)
+            self.cg_relu = nn.ReLU()
+            self.cg_shuffle = cg_shuffle
+            self.cg_base_group_index = 0
+            #self.cg_relu = lambda x: x
     
     def forward(self, input):
-        # sort blocks by mean absolute value
         if self.gamma > 0 and self.alpha > 0:
-            if self.count % 1000 == 0:
-                with torch.no_grad():
-                    block_values = F.avg_pool2d(self.weight.data.abs().permute(2,3,0,1),
-                                    kernel_size=(self.block_size, self.block_size),
-                                    stride=(self.block_size, self.block_size))
-                    sorted_block_values, indices = torch.sort(block_values.contiguous().view(-1))
-                    thre_index = int(block_values.data.numel() * self.gamma)
-                    threshold = sorted_block_values[thre_index]
-                    mask_small = 1 - block_values.gt(threshold.cuda()).float().cuda() # mask for blocks candidates for pruning
-                    mask_dropout = torch.rand_like(block_values).lt(self.alpha).float().cuda()
-                    mask_keep = 1.0 - mask_small * mask_dropout
-                    self.mask_keep_original = F.interpolate(mask_keep, 
-                                        scale_factor=(self.block_size, self.block_size)).permute(2,3,0,1)
-            # self.count += 1 # disable in-module mask_generation
-            out = F.conv2d(input, self.weight * self.mask_keep_original, None, self.stride, self.padding,
+            if self.cg_groups > 1:
+                # get the partial sum from base path
+                mask_base = torch.zeros_like(self.weight.data)
+                mask_base[:,self.cg_base_group_index*self.cg_in_chunk_size:(self.cg_base_group_index+1)*self.cg_in_chunk_size,:,:] = 1
+                mask_cond = 1 - mask_base
+                self.Yp = F.conv2d(input, self.weight * mask_base * self.mask_keep_original, None,
+                        self.stride, self.padding, self.dilation, self.groups)
+                # identify important regions
+                self.d = self.cg_relu(torch.sigmoid(self.cg_alpha*(self.cg_bn(self.Yp)-self.cg_threshold))-0.5)
+                # report statistics
+                self.num_out = self.d.numel()
+                self.num_full = self.d[self.d>0].numel()
+                self.Yc = F.conv2d(input, self.weight * mask_cond * self.mask_keep_original, None, 
+                        self.stride, self.padding, self.dilation, self.groups)
+                out = self.Yp + self.Yc * self.d
+                if self.cg_shuffle:
+                    self.cg_base_group_index += 1
+                    self.cg_base_group_index = self.cg_base_group_index % self.cg_groups
+            else:
+                out = F.conv2d(input, self.weight * self.mask_keep_original, None, self.stride, self.padding,
                                         self.dilation, self.groups)
         else:
-            out = F.conv2d(input, self.weight, None, self.stride, self.padding,
+            if self.cg_groups > 1:
+                # get the partial sum from base path
+                mask_base = torch.zeros_like(self.weight.data)
+                mask_base[:,self.cg_base_group_index*self.cg_in_chunk_size:(self.cg_base_group_index+1)*self.cg_in_chunk_size,:,:] = 0
+                mask_cond = 1 - mask_base
+                self.Yp = F.conv2d(input, self.weight * mask_base, None,
+                        self.stride, self.padding, self.dilation, self.groups)
+                # identify important regions
+                self.d = self.cg_relu(torch.sigmoid(self.cg_alpha*(self.cg_bn(self.Yp)-self.cg_threshold)))
+                # report statistics
+                self.num_out = self.d.numel()
+                self.num_full = self.d[self.d>0].numel()
+                self.Yc = F.conv2d(input, self.weight * mask_cond, None, 
+                        self.stride, self.padding, self.dilation, self.groups)
+                out = self.Yp + self.Yc  * self.d
+            else:
+                out = F.conv2d(input, self.weight, None, self.stride, self.padding,
                                         self.dilation, self.groups)
+                if self.cg_shuffle:
+                    self.cg_base_group_index += 1
+                    self.cg_base_group_index = self.cg_base_group_index % self.cg_groups
         if not self.bias is None:
             out += self.bias.view(1, -1, 1, 1).expand_as(out)
 
@@ -50,24 +83,9 @@ class Linear_TD(nn.Linear):
         self.gamma = gamma
         self.alpha = alpha
         self.block_size = block_size
-        self.count = -1 # disable in-module mask generation
 
     def forward(self, input):
         if self.gamma > 0 and self.alpha > 0:
-            if self.count % 1000 == 0:
-                with torch.no_grad():
-                    block_values = F.avg_pool2d(self.weight.data.abs().unsqueeze(0),
-                                    kernel_size=(self.block_size, self.block_size),
-                                    stride=(self.block_size, self.block_size))
-                    sorted_block_values, indices = torch.sort(block_values.contiguous().view(-1))
-                    thre_index = int(block_values.data.numel() * self.gamma)
-                    threshold = sorted_block_values[thre_index]
-                    mask_small = 1 - block_values.gt(threshold.cuda()).float().cuda() # mask for blocks candidates for pruning
-                    mask_dropout = torch.rand_like(block_values).lt(self.alpha).float().cuda()
-                    mask_keep = 1.0 - mask_small * mask_dropout
-                    self.mask_keep_original = F.interpolate(mask_keep.unsqueeze(0), 
-                                        scale_factor=(self.block_size, self.block_size)).squeeze()
-            # self.count += 1 # disable in-module mask generation
             return F.linear(input, self.weight * self.mask_keep_original, self.bias)
         else:
             return F.linear(input, self.weight, self.bias)

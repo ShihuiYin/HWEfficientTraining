@@ -73,6 +73,17 @@ parser.add_argument('--freeze_BN_after', type=int, default=10000, # not helpful
                     help='epoch number after which BN parameters freeze')
 parser.add_argument('--per_layer', type=int, default=0,
                     help='uniform pruning rate across layers if 1')
+parser.add_argument('--cg_groups', type=int, default=1,
+                    help='apply channel gating if cg_groups > 1')
+parser.add_argument('--cg_alpha', type=float, default=2.0,
+                    help='alpha value for channel gating')
+parser.add_argument('--cg_threshold_init', type=float, default=0.0,
+                    help='initial threshold value for channel gating')
+parser.add_argument('--cg_threshold_target', type=float, default=0.0,
+                    help='initial threshold value for channel gating')
+parser.add_argument('--lambda_CG', type=float, default=0,
+                    help='lambda for Channel Gating regularization')
+
 
 
 for num in num_types:
@@ -105,11 +116,12 @@ loaders = get_data(args.dataset, args.data_path, args.batch_size, args.val_ratio
 if args.dataset=="CIFAR10": num_classes=10
 elif args.dataset=="IMAGENET12": num_classes=1000
 
-def get_result(loaders, model, phase, loss_scaling=1000.0, lambda_BN=0.0):
+def get_result(loaders, model, phase, loss_scaling=1000.0, lambda_BN=0.0, lambda_CG=0.0, target_cg_threshold=0.0):
     time_ep = time.time()
     res = utils.run_epoch(loaders[phase], model, criterion,
                                 optimizer=optimizer, phase=phase, loss_scaling=loss_scaling,
-                                lambda_BN=lambda_BN)
+                                lambda_BN=lambda_BN, lambda_CG=lambda_CG,
+                                target_cg_threshold=target_cg_threshold)
     time_pass = time.time() - time_ep
     res['time_pass'] = time_pass
     return res
@@ -152,7 +164,11 @@ if 'TD' in args.model:
     logger.info("block size: {}".format(args.block_size))
     logger.info("TD gamma: {0:.3f}".format(args.TD_gamma))
     logger.info("TD alpha: {0:.3f}".format(args.TD_alpha))
-    model_cfg.kwargs.update({"gamma":args.TD_gamma, "alpha":args.TD_alpha, "block_size":args.block_size})
+    logger.info("cg_groups: {}".format(args.cg_groups))
+    logger.info("cg_alpha: {0:.2f}".format(args.cg_alpha))
+    logger.info("cg_threshold_init: {0:.2f}".format(args.cg_threshold_init))
+    model_cfg.kwargs.update({"gamma":args.TD_gamma, "alpha":args.TD_alpha, "block_size":args.block_size,
+        "cg_groups":args.cg_groups, "cg_threshold_init":args.cg_threshold_init, "cg_alpha":args.cg_alpha})
 
 model = model_cfg.base(*model_cfg.args, num_classes=num_classes, **model_cfg.kwargs)
 logger.info('Model: {}'.format(model))
@@ -187,6 +203,9 @@ if args.evaluate is not None:
         if hasattr(m, 'gamma'):
             m.gamma = args.TD_gamma
             m.alpha = args.TD_alpha
+            m.cg_groups = args.cg_groups
+            m.cg_alpha = args.cg_alpha
+            m.cg_threshold_init = args.cg_threshold_init
     print(model)
     test_res = get_result(loaders, model, "test", loss_scaling=1)
     print("test accuracy = %.3f%%" % test_res['accuracy'])
@@ -231,12 +250,17 @@ scheduler = LambdaLR(optimizer, lr_lambda=[schedule])
 columns = ['ep', 'lr', 'tr_loss', 'tr_acc', 'tr_time', 'te_loss', 'te_acc', 'te_time', 'wspar', 'aspar', 'agspar']
 if args.TD_gamma_final > 0 or args.TD_alpha_final > 0:
     columns += ['gamma', 'alpha']
-    
+
+if args.cg_groups > 1:
+    columns += ['cgspar', 'cgthre']
+
 for epoch in range(args.epochs):
     time_ep = time.time()
     TD_gamma, TD_alpha = update_gamma_alpha(epoch)
-    utils.update_mask(model, TD_gamma, TD_alpha, args.block_size, args.per_layer)
-    train_res = get_result(loaders, model, "train", loss_scaling, args.lambda_BN)
+    if 'TD' in args.model:
+        utils.update_mask(model, TD_gamma, TD_alpha, args.block_size, args.per_layer)
+    train_res = get_result(loaders, model, "train", loss_scaling, args.lambda_BN, args.lambda_CG,
+            args.cg_threshold_target)
     test_res = get_result(loaders, model, "test", loss_scaling)
     scheduler.step()
     weight_sparsity = utils.get_weight_sparsity(model)
@@ -247,6 +271,12 @@ for epoch in range(args.epochs):
             train_res['time_pass'], test_res['loss'], test_res['accuracy'], test_res['time_pass'], weight_sparsity, activation_sparsity, activation_group_sparsity]
     if args.TD_gamma_final > 0 or args.TD_alpha_final > 0:
         values += [TD_gamma, TD_alpha]
+
+    if args.cg_groups > 1:
+        cg_sparsity = utils.get_cg_sparsity(model)
+        cg_threshold = utils.get_avg_cg_threshold(model)
+        values += [cg_sparsity, cg_threshold]
+
     utils.print_table(values, columns, epoch, logger)
     if epoch == args.freeze_BN_after:
         utils.freeze_BN_layers(model)

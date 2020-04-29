@@ -1,16 +1,21 @@
 #!/bin/bash
 block_size=${1:-4}
 gamma_final=${2:-0.75}
-per_layer=${3:-0}
-lambda_BN=${4:-0}
-init_BN_bias=${5:-0}
+cg_groups=${3:-1}
+cg_alpha=${4:-2.0}
+cg_threshold_init=${5:--3.0}
+cg_threshold_target=${6:-1.0}
+lambda_CG=${7:-1e-4}
+lambda_BN=${8:-0}
+init_BN_bias=0
+per_layer=1
 alpha_final=1.0
 gamma=0.0
 alpha=0.0
 ramping_power=5.0
 gradient_gamma=0
-log_name="./logs/VGG16BN_FP8_TD_${block_size}_${gamma}_${alpha}_${gamma_final}_${alpha_final}_${ramping_power}_${lambda_BN}_${init_BN_bias}_perlayer_${per_layer}.log" 
-save_file_name="VGG16BN_FP8_TD_${block_size}_${gamma}_${alpha}_${gamma_final}_${alpha_final}_${ramping_power}_${lambda_BN}_${init_BN_bias}_perlayer_${per_layer}.pth" 
+log_name="./logs/VGG16BN_FP8_TD_${block_size}_${gamma}_${alpha}_${gamma_final}_${alpha_final}_${ramping_power}_${lambda_BN}_${init_BN_bias}_perlayer_${per_layer}_cg_${cg_groups}_${cg_alpha}_${cg_threshold}.log" 
+save_file_name="VGG16BN_FP8_TD_${block_size}_${gamma}_${alpha}_${gamma_final}_${alpha_final}_${ramping_power}_${lambda_BN}_${init_BN_bias}_perlayer_${per_layer}_cg_${cg_groups}_${cg_alpha}_${cg_threshold}.pth" 
 
 kernprof -l train.py --dataset CIFAR10 \
                 --data_path ./data \
@@ -27,6 +32,11 @@ kernprof -l train.py --dataset CIFAR10 \
                 --init_BN_bias $init_BN_bias \
                 --gradient_gamma $gradient_gamma \
                 --per_layer $per_layer \
+                --cg_groups $cg_groups \
+                --cg_alpha $cg_alpha \
+                --cg_threshold_init $cg_threshold_init \
+                --cg_threshold_target $cg_threshold_target \
+                --lambda_CG $lambda_CG \
                 --epochs=200 \
                 --lr_init=0.05 \
                 --wd=5e-4 \
