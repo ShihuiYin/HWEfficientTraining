@@ -27,7 +27,7 @@ class Conv2d_TD(nn.Conv2d):
                     self.mask_base[i*self.cg_out_chunk_size:(i+1)*self.cg_out_chunk_size,i*self.cg_in_chunk_size:(i+1)*self.cg_in_chunk_size,:,:] = 1
             else:
                 self.mask_base[:,self.cg_base_group_index*self.cg_in_chunk_size:(self.cg_base_group_index+1)*self.cg_in_chunk_size,:,:] = 1
-            self.mask_cond = 1 - mask_base
+            self.mask_cond = 1 - self.mask_base
 
             self.cg_base_group_index = 0
             #self.cg_relu = lambda x: x
