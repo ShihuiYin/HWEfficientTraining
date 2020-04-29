@@ -20,7 +20,7 @@ class Conv2d_TD(nn.Conv2d):
             self.cg_bn = nn.BatchNorm2d(out_channels, affine=False)
             self.cg_relu = nn.ReLU()
             self.cg_grouping = cg_grouping
-            self.mask_base = torch.zeros_like(self.weight.data)
+            self.mask_base = torch.zeros_like(self.weight.data).cuda()
             if self.cg_grouping:
                 self.cg_out_chunk_size = int(out_channels / self.cg_groups)                 
                 for i in range(self.cg_groups):
