@@ -2,6 +2,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
+class Greater_Than(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input):
+        return torch.gt(input, 0).float()
+
+    def backward(ctx, grad_output):
+        grad_input = grad_output.clone()
+        return grad_input, None
+
 class Conv2d_TD(nn.Conv2d):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, 
                  padding=0, dilation=1, groups=1, bias=True, gamma=0.0, alpha=0.0, block_size=16,
@@ -17,8 +27,9 @@ class Conv2d_TD(nn.Conv2d):
             self.cg_alpha=cg_alpha
             self.cg_threshold = nn.Parameter(cg_threshold_init * torch.ones(1, out_channels, 1, 1))
             self.cg_in_chunk_size = int(in_channels / self.cg_groups)
-            self.cg_bn = nn.BatchNorm2d(out_channels, affine=False)
-            self.cg_relu = nn.ReLU()
+            #self.cg_bn = nn.BatchNorm2d(out_channels, affine=False)
+            self.cg_bn = nn.functional.instance_norm
+            self.cg_gt = Greater_Than.apply
             self.cg_grouping = cg_grouping
             self.mask_base = torch.zeros_like(self.weight.data).cuda()
             if self.cg_grouping:
@@ -39,7 +50,7 @@ class Conv2d_TD(nn.Conv2d):
                 self.Yp = F.conv2d(input, self.weight * self.mask_base * self.mask_keep_original, None,
                         self.stride, self.padding, self.dilation, self.groups)
                 # identify important regions
-                self.d = self.cg_relu(torch.sigmoid(self.cg_alpha*(self.cg_bn(self.Yp)-self.cg_threshold))-0.5)
+                self.d = self.cg_gt(torch.sigmoid(self.cg_alpha*(self.cg_bn(self.Yp)-self.cg_threshold))-0.5)
                 # report statistics
                 self.num_out = self.d.numel()
                 self.num_full = self.d[self.d>0].numel()
@@ -55,7 +66,7 @@ class Conv2d_TD(nn.Conv2d):
                 self.Yp = F.conv2d(input, self.weight * self.mask_base, None,
                         self.stride, self.padding, self.dilation, self.groups)
                 # identify important regions
-                self.d = self.cg_relu(torch.sigmoid(self.cg_alpha*(self.cg_bn(self.Yp)-self.cg_threshold)))
+                self.d = self.cg_gt(torch.sigmoid(self.cg_alpha*(self.cg_bn(self.Yp)-self.cg_threshold))-0.5)
                 # report statistics
                 self.num_out = self.d.numel()
                 self.num_full = self.d[self.d>0].numel()
