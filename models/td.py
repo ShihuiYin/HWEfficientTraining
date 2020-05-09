@@ -50,8 +50,8 @@ class Conv2d_TD(nn.Conv2d):
                 self.Yp = F.conv2d(input, self.weight * self.mask_base * self.mask_keep_original, None,
                         self.stride, self.padding, self.dilation, self.groups)
                 # identify important regions
-                #self.d = self.cg_gt(torch.sigmoid(self.cg_alpha*(self.cg_bn(self.Yp)-self.cg_threshold))-0.5)
-                self.d = self.cg_gt(self.cg_bn(self.Yp)-self.cg_threshold)
+                self.d = self.cg_gt(torch.sigmoid(self.cg_alpha*(self.cg_bn(self.Yp)-self.cg_threshold))-0.5)
+                #self.d = self.cg_gt(self.cg_bn(self.Yp)-self.cg_threshold)
                 # report statistics
                 self.num_out = self.d.numel()
                 self.num_full = self.d[self.d>0].numel()
@@ -67,8 +67,8 @@ class Conv2d_TD(nn.Conv2d):
                 self.Yp = F.conv2d(input, self.weight * self.mask_base, None,
                         self.stride, self.padding, self.dilation, self.groups)
                 # identify important regions
-                #self.d = self.cg_gt(torch.sigmoid(self.cg_alpha*(self.cg_bn(self.Yp)-self.cg_threshold))-0.5)
-                self.d = self.cg_gt(self.cg_bn(self.Yp)-self.cg_threshold)
+                self.d = self.cg_gt(torch.sigmoid(self.cg_alpha*(self.cg_bn(self.Yp)-self.cg_threshold))-0.5)
+                #self.d = self.cg_gt(self.cg_bn(self.Yp)-self.cg_threshold)
                 # report statistics
                 self.num_out = self.d.numel()
                 self.num_full = self.d[self.d>0].numel()
