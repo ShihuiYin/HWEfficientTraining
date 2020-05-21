@@ -6,6 +6,7 @@ cg_alpha=${4:-2.0}
 cg_threshold_init=${5:-0.0}
 cg_threshold_target=${6:-1.0}
 lambda_CG=${7:-1e-4}
+wd=${8:-5e-4}
 lambda_BN=0
 init_BN_bias=0
 per_layer=0
@@ -14,10 +15,10 @@ gamma=0.0
 alpha=0.0
 ramping_power=5.0
 gradient_gamma=0
-log_name="./logs/VGG16GN_FP8_TD_${block_size}_${gamma}_cg_${cg_groups}_${cg_alpha}_${cg_threshold_init}_${cg_threshold_target}.log" 
-save_file_name="VGG16GN_FP8_TD_${block_size}_${gamma}_cg_${cg_groups}_${cg_alpha}_${cg_threshold_init}_${cg_threshold_target}.pth" 
+log_name="./logs/VGG16GN_FP8_TD_${block_size}_${gamma}_cg_${cg_groups}_${cg_alpha}_${cg_threshold_init}_${cg_threshold_target}_wd_${wd}.log" 
+save_file_name="VGG16GN_FP8_TD_${block_size}_${gamma}_cg_${cg_groups}_${cg_alpha}_${cg_threshold_init}_${cg_threshold_target}_wd_${wd}.pth" 
 
-kernprof -l train.py --dataset CIFAR10 \
+python train.py --dataset CIFAR10 \
                 --data_path ./data \
                 --model VGG16GNLP_TD \
                 --log_file $log_name \
@@ -39,7 +40,7 @@ kernprof -l train.py --dataset CIFAR10 \
                 --lambda_CG $lambda_CG \
                 --epochs=200 \
                 --lr_init=0.05 \
-                --wd=5e-4 \
+                --wd=$wd \
                 --weight-man 2 \
                 --grad-man 2 \
                 --momentum-man 9 \
