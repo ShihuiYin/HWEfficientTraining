@@ -9,15 +9,16 @@ lambda_CG=${7:-1e-4}
 lambda_BN=${8:-0}
 init_BN_bias=0
 per_layer=0
+share_by_kernel=1
 alpha_final=1.0
 gamma=0.0
 alpha=0.0
 ramping_power=5.0
 gradient_gamma=0
-log_name="./logs/VGG16BN_FP8_TD_${block_size}_${gamma}_${alpha}_${gamma_final}_${alpha_final}_${ramping_power}_${lambda_BN}_${init_BN_bias}_perlayer_${per_layer}_cg_${cg_groups}_${cg_alpha}_${cg_threshold_init}_${cg_threshold_target}.log" 
-save_file_name="VGG16BN_FP8_TD_${block_size}_${gamma}_${alpha}_${gamma_final}_${alpha_final}_${ramping_power}_${lambda_BN}_${init_BN_bias}_perlayer_${per_layer}_cg_${cg_groups}_${cg_alpha}_${cg_threshold_init}_${cg_threshold_target}.pth" 
+log_name="./logs/VGG16BN_FP8_TD_${block_size}_${gamma_final}_perlayer_${per_layer}_cg_${cg_groups}_${cg_alpha}_${cg_threshold_init}_${cg_threshold_target}_share_by_kernel_${share_by_kernel}.log" 
+save_file_name="VGG16BN_FP8_TD_${block_size}_${gamma_final}_perlayer_${per_layer}_cg_${cg_groups}_${cg_alpha}_${cg_threshold_init}_${cg_threshold_target}_share_by_kernel_${share_by_kernel}.log" 
 
-kernprof -l train.py --dataset CIFAR10 \
+ python train.py --dataset CIFAR10 \
                 --data_path ./data \
                 --model VGG16BNLP_TD \
                 --log_file $log_name \
@@ -32,6 +33,7 @@ kernprof -l train.py --dataset CIFAR10 \
                 --init_BN_bias $init_BN_bias \
                 --gradient_gamma $gradient_gamma \
                 --per_layer $per_layer \
+                --share_by_kernel $share_by_kernel \
                 --cg_groups $cg_groups \
                 --cg_alpha $cg_alpha \
                 --cg_threshold_init $cg_threshold_init \
@@ -48,10 +50,10 @@ kernprof -l train.py --dataset CIFAR10 \
                 --acc-man 9 \
                 --weight-rounding nearest \
                 --grad-rounding nearest \
-                --momentum-rounding stochastic \
+                --momentum-rounding nearest \
                 --activate-rounding nearest \
                 --error-rounding nearest \
-                --acc-rounding stochastic \
+                --acc-rounding nearest \
                 --weight-exp 5 \
                 --grad-exp 5 \
                 --momentum-exp 6 \

@@ -191,7 +191,7 @@ def print_table(values, columns, epoch, logger):
         table = table.split('\n')[2]
     logger.info(table)
 
-def update_mask(model, gamma=0.0, alpha=0.0, block_size=4, per_layer=True):
+def update_mask(model, gamma=0.0, alpha=0.0, block_size=4, per_layer=True, share_by_kernel=False):
     with torch.no_grad():
         # get the block representative values
         block_values = {}
@@ -199,9 +199,14 @@ def update_mask(model, gamma=0.0, alpha=0.0, block_size=4, per_layer=True):
             block_values_all = []
         for m in model.modules():
             if isinstance(m, Conv2d_TD):
-                block_values[m] = F.avg_pool2d(m.weight.data.abs().permute(2,3,0,1),
+                if share_by_kernel:
+                    block_values[m] = F.avg_pool2d(m.weight.data.abs().permute(2,3,0,1).mean(0,True).mean(1,True),
                                 kernel_size=(block_size, block_size),
                                 stride=(block_size, block_size))
+                else:
+                    block_values[m] = F.avg_pool2d(m.weight.data.abs().permute(2,3,0,1),
+                                    kernel_size=(block_size, block_size),
+                                    stride=(block_size, block_size))
                 if not per_layer:
                     block_values_all.append(block_values[m].contiguous().view(-1))
             elif isinstance(m, Linear_TD):
@@ -232,13 +237,16 @@ def update_mask(model, gamma=0.0, alpha=0.0, block_size=4, per_layer=True):
             mask_dropout = torch.rand_like(block_values[m]).lt(alpha).float().cuda()
             mask_keep = 1.0 - mask_small * mask_dropout
             if isinstance(m, Conv2d_TD):
-                m.mask_keep_original = F.interpolate(mask_keep, 
-                                    scale_factor=(block_size, block_size)).permute(2,3,0,1)
+                if share_by_kernel:
+                    kernel_size = m.weight.data.shape[2]
+                    m.mask_keep_original = F.interpolate(mask_keep.expand(kernel_size,kernel_size,-1,-1),
+                                        scale_factor=(block_size, block_size)).permute(2,3,0,1)
+                else:
+                    m.mask_keep_original = F.interpolate(mask_keep, 
+                                        scale_factor=(block_size, block_size)).permute(2,3,0,1)
             elif isinstance(m, Linear_TD):
                 m.mask_keep_original = F.interpolate(mask_keep.unsqueeze(0), 
                                     scale_factor=(block_size, block_size)).squeeze()
-
-
 
 
 #@profile

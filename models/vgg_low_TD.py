@@ -8,7 +8,7 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 from qtorch import FloatingPoint
 from qtorch.quant import Quantizer
-from .td import Conv2d_TD, Linear_TD
+from .td import Conv2d_TD, Linear_TD, GroupNormMoving
 
 __all__ = ['VGG16LP_TD', 'VGG16BNLP_TD', 'VGG16GNLP_TD', 'VGG19LP_TD', 'VGG19BNLP_TD', 'VGG19GNLP_TD']
 
@@ -33,7 +33,8 @@ def make_layers(cfg, quant, batch_norm=False, group_norm=False, gamma=0.5, alpha
             if batch_norm:
                 layers += [conv2d, nn.BatchNorm2d(filters), nn.ReLU(inplace=True)]
             elif group_norm:
-                layers += [conv2d, nn.GroupNorm(4, filters), nn.ReLU(inplace=True)]
+                #layers += [conv2d, nn.GroupNorm(4, filters), nn.ReLU(inplace=True)]
+                layers += [conv2d, GroupNormMoving(4, filters), nn.ReLU(inplace=True)]
             else:
                 layers += [conv2d, nn.ReLU(inplace=True)]
             if use_quant: layers += [quant()]

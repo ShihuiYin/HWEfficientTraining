@@ -86,7 +86,7 @@ class Conv2d_TD(nn.Conv2d):
     def extra_repr(self):
         return super(Conv2d_TD, self).extra_repr() + ', gamma={}, alpha={}, block_size={}'.format(
                 self.gamma, self.alpha, self.block_size)
-
+        
 class Linear_TD(nn.Linear):
     def __init__(self, in_features, out_features, bias=True, gamma=0.0, alpha=0.0, block_size=16):
         super(Linear_TD, self).__init__(in_features, out_features, bias)
@@ -103,3 +103,76 @@ class Linear_TD(nn.Linear):
     def extra_repr(self):
         return super(Linear_TD, self).extra_repr() + ', gamma={}, alpha={}, block_size={}'.format(
                 self.gamma, self.alpha, self.block_size)
+
+
+class GroupNormMoving(nn.Module):
+    def __init__(self, num_groups, num_features, eps=1e-5,
+                momentum=1.0, affine=True,
+                track_running_stats=True):
+        super(GroupNormMoving, self).__init__()
+        self.num_features = num_features
+        self.num_groups = num_groups
+        self.eps = eps
+
+        self.momentum = momentum
+        self.affine = affine
+
+        self.track_running_stats = track_running_stats
+
+        tensor_shape = (1, num_features, 1, 1)
+
+        if self.affine:
+            self.weight = nn.Parameter(torch.Tensor(*tensor_shape))
+            self.bias = nn.Parameter(torch.Tensor(*tensor_shape))
+        else:
+            self.register_parameter('weight', None)
+            self.register_parameter('bias', None)
+
+    
+        self.register_buffer('running_mean', torch.zeros(num_features))
+        self.register_buffer('running_var', torch.ones(num_features))
+        self.initial = True
+        
+        self.reset_parameters()
+
+    def forward(self, x):
+        N, C, H, W = x.size()
+        G = self.num_groups
+        assert C % G == 0, "Channel must be divided by groups"
+
+        x = x.view(N, G, -1)
+        
+        if self.training and self.track_running_stats:
+            mean = x.mean(-1, keepdim=True)
+            var = x.var(-1, keepdim=True)
+            if self.initial:
+                self.running_mean.data = torch.zeros_like(mean)
+                self.running_var.data =  torch.ones_like(var)
+                self.initial = False
+            
+            with torch.no_grad():
+                self.running_mean = mean * self.momentum + \
+                                    self.running_mean * (1 - self.momentum)
+                self.running_var = var * self.momentum + \
+                                    self.running_var * (1 - self.momentum)
+        else:
+            mean = self.running_mean
+            var = self.running_var
+
+        x = (x - mean) / (var + self.eps).sqrt()
+        x = x.view(N, C, H, W)
+        return x * self.weight + self.bias
+
+    def reset_parameters(self):
+        if self.track_running_stats:
+            if self.running_mean is not None and self.running_var is not None:
+                self.running_mean.zero_()
+                self.running_var.fill_(1)
+        if self.affine:
+            self.weight.data.fill_(1)
+            self.bias.data.zero_()
+
+    def __repr__(self):
+        return ('{name}({num_groups}, {num_features}, eps={eps}, momentum={momentum},'
+                ' affine={affine}, track_running_stats={track_running_stats})'
+                .format(name=self.__class__.__name__, **self.__dict__))

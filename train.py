@@ -83,6 +83,8 @@ parser.add_argument('--cg_threshold_target', type=float, default=0.0,
                     help='initial threshold value for channel gating')
 parser.add_argument('--lambda_CG', type=float, default=0,
                     help='lambda for Channel Gating regularization')
+parser.add_argument('--share_by_kernel', type=int, default=0,
+                    help='block structure: [block_size, block_size, kernel_size, kernel_size]')
 
 
 
@@ -135,7 +137,12 @@ if args.evaluate is not None:
         setattr(args, '{}_exp'.format(num), getattr(saved_args, '{}_exp'.format(num)))
         setattr(args, '{}_rounding'.format(num), getattr(saved_args, '{}_rounding'.format(num)))
     args.block_size = saved_args.block_size
+    args.TD_gamma = saved_args.TD_gamma if saved_args.TD_gamma_final == -1 else saved_args.TD_gamma_final
     args.model = saved_args.model
+    args.per_layer = saved_args.per_layer
+    args.share_by_kernel = saved_args.share_by_kernel
+    args.cg_groups = saved_args.cg_groups
+    args.cg_alpha = saved_args.cg_alpha
     args.TD_alpha = 1
 
 
@@ -207,6 +214,8 @@ if args.evaluate is not None:
             m.cg_alpha = args.cg_alpha
             m.cg_threshold_init = args.cg_threshold_init
     print(model)
+    if 'TD' in args.model:
+        utils.update_mask(model, args.TD_gamma, args.TD_alpha, args.block_size, args.per_layer, args.share_by_kernel)
     test_res = get_result(loaders, model, "test", loss_scaling=1)
     print("test accuracy = %.3f%%" % test_res['accuracy'])
     print("Weight sparsity = %.3f%%" % (utils.get_weight_sparsity(model) * 100.))
@@ -258,7 +267,7 @@ for epoch in range(args.epochs):
     time_ep = time.time()
     TD_gamma, TD_alpha = update_gamma_alpha(epoch)
     if 'TD' in args.model:
-        utils.update_mask(model, TD_gamma, TD_alpha, args.block_size, args.per_layer)
+        utils.update_mask(model, TD_gamma, TD_alpha, args.block_size, args.per_layer, args.share_by_kernel)
     train_res = get_result(loaders, model, "train", loss_scaling, args.lambda_BN, args.lambda_CG,
             args.cg_threshold_target)
     test_res = get_result(loaders, model, "test", loss_scaling)
